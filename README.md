@@ -16,6 +16,18 @@ different release intervals, plus one deliberately clean interval that acts
 as a false-positive control. The tool is graded against that answer, which it
 cannot read (the ground truth is written outside the repository).
 
+## Quick start
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[test]"
+.venv/bin/python -m pytest -q
+.venv/bin/python benchmark/bench.py
+```
+
+The third command builds the oracle in a fresh temporary directory, runs the
+whole trace → detect → bisect → revert hunt, refreshes `benchmark/raw/`, and
+prints the measured table below. It exits non-zero if any gate fails.
+
 ## Why this exists
 
 "Our library got slower between 1.4 and 2.0" is usually answered with a
