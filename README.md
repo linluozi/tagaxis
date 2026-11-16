@@ -28,6 +28,11 @@ The third command builds the oracle in a fresh temporary directory, runs the
 whole trace → detect → bisect → revert hunt, refreshes `benchmark/raw/`, and
 prints the measured table below. It exits non-zero if any gate fails.
 
+**Result on the shipped oracle (36 commits, 8 tags, 6 known regressions,
+1 clean control interval): 6/6 regressions localized to exactly one commit,
+6/6 revert-proven (all within 1.8% of the parent), 0 false-positive
+intervals, A/A control 0.55%.** Full table and raw samples below.
+
 ## Why this exists
 
 "Our library got slower between 1.4 and 2.0" is usually answered with a
