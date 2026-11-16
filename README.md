@@ -128,8 +128,11 @@ do apply are listed with their exact commands:
 Full suite:
 
 ```
-18 passed in 
+18 passed
 ```
+
+The end-to-end oracle test inside the suite uses the shipped sampling (7 runs
+per measurement), so the suite takes a couple of minutes.
 
 **The A/A gate is not decoration.** The first prototype compared two
 consecutive blocks of the same revision and tripped repeatedly on this
