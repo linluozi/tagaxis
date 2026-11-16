@@ -1,0 +1,277 @@
+{
+  "oracle": {
+    "commits": 36,
+    "tags": 8,
+    "known_regressions": 6,
+    "clean_intervals": [
+      "v0.7.0..v0.8.0"
+    ]
+  },
+  "aa_control_rel_dev": 0.005503051917115201,
+  "trajectory": [
+    {
+      "label": "v0.1.0",
+      "median_ns": 11448898,
+      "p25_ns": 11389026.0,
+      "p75_ns": 11496132.0,
+      "rsd_pct": 0.8063573311476968,
+      "n": 7,
+      "samples_ns": [
+        11448898,
+        11406399,
+        11284930,
+        11541773,
+        11543776,
+        11450491,
+        11371653
+      ]
+    },
+    {
+      "label": "v0.2.0",
+      "median_ns": 13855171,
+      "p25_ns": 13741238.0,
+      "p75_ns": 13881126.5,
+      "rsd_pct": 0.8048687183865684,
+      "n": 7,
+      "samples_ns": [
+        13757378,
+        13654073,
+        13855171,
+        13725098,
+        13884478,
+        13978244,
+        13877775
+      ]
+    },
+    {
+      "label": "v0.3.0",
+      "median_ns": 21295934,
+      "p25_ns": 21239587.0,
+      "p75_ns": 21343227.5,
+      "rsd_pct": 1.2182401444605295,
+      "n": 7,
+      "samples_ns": [
+        21244827,
+        21362538,
+        21234347,
+        21323917,
+        21948079,
+        21194362,
+        21295934
+      ]
+    },
+    {
+      "label": "v0.4.0",
+      "median_ns": 28201778,
+      "p25_ns": 28133208.5,
+      "p75_ns": 28267035.5,
+      "rsd_pct": 0.5642978047976682,
+      "n": 7,
+      "samples_ns": [
+        28082533,
+        28183884,
+        28364394,
+        28201778,
+        28246191,
+        28287880,
+        27877138
+      ]
+    },
+    {
+      "label": "v0.5.0",
+      "median_ns": 37874637,
+      "p25_ns": 37725806.5,
+      "p75_ns": 37971092.5,
+      "rsd_pct": 0.5162333524907904,
+      "n": 7,
+      "samples_ns": [
+        37874637,
+        37760802,
+        37690811,
+        37975196,
+        37467831,
+        38009290,
+        37966989
+      ]
+    },
+    {
+      "label": "v0.6.0",
+      "median_ns": 69382491,
+      "p25_ns": 69270941.5,
+      "p75_ns": 69912874.0,
+      "rsd_pct": 0.518028422185694,
+      "n": 7,
+      "samples_ns": [
+        69382491,
+        69282322,
+        69168128,
+        69977971,
+        69259561,
+        69950920,
+        69874828
+      ]
+    },
+    {
+      "label": "v0.7.0",
+      "median_ns": 115338052,
+      "p25_ns": 113643666.5,
+      "p75_ns": 115896988.5,
+      "rsd_pct": 1.8346617871867519,
+      "n": 7,
+      "samples_ns": [
+        117563005,
+        112845346,
+        115865274,
+        115928703,
+        111288788,
+        114441987,
+        115338052
+      ]
+    },
+    {
+      "label": "v0.8.0",
+      "median_ns": 110643083,
+      "p25_ns": 110463165.0,
+      "p75_ns": 110774286.0,
+      "rsd_pct": 0.21178885005311526,
+      "n": 7,
+      "samples_ns": [
+        110966562,
+        110417639,
+        110291693,
+        110765014,
+        110783558,
+        110508691,
+        110643083
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "interval": "v0.1.0..v0.2.0",
+      "ratio": 1.2101750753653322,
+      "from_median_ns": 11448898,
+      "to_median_ns": 13855171,
+      "culprit": "3ef577f949ada2c999a0fe9fb6aa41ea5c83ddeb",
+      "culprit_subject": "analyze: normalise tokens with t.strip().casefold()",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": 0.01781603895080972,
+      "revert_within_tolerance": true
+    },
+    {
+      "interval": "v0.2.0..v0.3.0",
+      "ratio": 1.5370386984036501,
+      "from_median_ns": 13855171,
+      "to_median_ns": 21295934,
+      "culprit": "04180daaa28513f21f449a768fcf27c0c5baf62b",
+      "culprit_subject": "analyze: normalise tokens with t.encode('utf-8').decode('utf-8')",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": -0.0013943478854064812,
+      "revert_within_tolerance": true
+    },
+    {
+      "interval": "v0.3.0..v0.4.0",
+      "ratio": 1.3242799306196198,
+      "from_median_ns": 21295934,
+      "to_median_ns": 28201778,
+      "culprit": "a9aa849bbdb7095a9f8395c40e7fd691d35db9a9",
+      "culprit_subject": "analyze: normalise tokens with t.encode('ascii', 'ignore').decode('ascii')",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": 0.006293071168471419,
+      "revert_within_tolerance": true
+    },
+    {
+      "interval": "v0.4.0..v0.5.0",
+      "ratio": 1.3429875591531852,
+      "from_median_ns": 28201778,
+      "to_median_ns": 37874637,
+      "culprit": "94e699d1f3c9075a5c2cfe5dacef08319a8987e7",
+      "culprit_subject": "analyze: normalise tokens with ' '.join([p for p in t.split() if p])",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": 0.005788797613328944,
+      "revert_within_tolerance": true
+    },
+    {
+      "interval": "v0.5.0..v0.6.0",
+      "ratio": 1.831898507700549,
+      "from_median_ns": 37874637,
+      "to_median_ns": 69382491,
+      "culprit": "fbaea40fe9c6d48997b1da953a766087ba4b9817",
+      "culprit_subject": "analyze: normalise tokens with ''.join(ch for ch in t if ch.isprintable())",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": -0.00026350963397698326,
+      "revert_within_tolerance": true
+    },
+    {
+      "interval": "v0.6.0..v0.7.0",
+      "ratio": 1.662350981316021,
+      "from_median_ns": 69382491,
+      "to_median_ns": 115338052,
+      "culprit": "ed2824c18ebc43bc8ffe785444d8c81edfe6e570",
+      "culprit_subject": "analyze: normalise tokens with re.sub(r'[^0-9a-z]+', '', t)",
+      "n_commits_in_range": 5,
+      "n_probes": 2,
+      "localized_exactly": true,
+      "revert_rel_delta_vs_parent": 0.00732802314088748,
+      "revert_within_tolerance": true
+    }
+  ],
+  "totals": {
+    "steps_detected": 6,
+    "localized_exactly": 6,
+    "revert_within_tolerance": 6,
+    "false_positive_intervals": 0,
+    "max_probes_per_regression": 2
+  },
+  "meta": {
+    "repo": "/tmp/tagaxis-oracle-xs9s58eq",
+    "oracle_ground_truth": "/tmp/tagaxis-oracle-xs9s58eq.ground_truth.json"
+  },
+  "elapsed_s": null,
+  "raw_files": [
+    "aa-rev0-v0.1.0.json",
+    "aa-rev1-v0.1.0.json",
+    "bisectprobe-v0.1.0..v0.2.0-14866a3398869607ef02eccd766c70aafd3ba928.json",
+    "bisectprobe-v0.1.0..v0.2.0-3ef577f949ad.json",
+    "bisectprobe-v0.1.0..v0.2.0-5edcb3e34b1b.json",
+    "bisectprobe-v0.2.0..v0.3.0-04180daaa285.json",
+    "bisectprobe-v0.2.0..v0.3.0-4d7cb88324f7.json",
+    "bisectprobe-v0.2.0..v0.3.0-fbce2d8e7a2fad244f36185f8951d7fda01ed417.json",
+    "bisectprobe-v0.3.0..v0.4.0-2d9c4164470c.json",
+    "bisectprobe-v0.3.0..v0.4.0-a9aa849bbdb7.json",
+    "bisectprobe-v0.3.0..v0.4.0-c72b28b84a867e47af0bd938c3b2dfc34dad0748.json",
+    "bisectprobe-v0.4.0..v0.5.0-53c47f51bc00f47dd8deb23d60e4f7ef5f81a98a.json",
+    "bisectprobe-v0.4.0..v0.5.0-94e699d1f3c9.json",
+    "bisectprobe-v0.4.0..v0.5.0-f03536fa4c86.json",
+    "bisectprobe-v0.5.0..v0.6.0-5c7f6503ef97a76bd0ecf41fc963bfde07f19a29.json",
+    "bisectprobe-v0.5.0..v0.6.0-fbaea40fe9c6.json",
+    "bisectprobe-v0.5.0..v0.6.0-fbd9700ab7c5.json",
+    "bisectprobe-v0.6.0..v0.7.0-d62f260e6dbc.json",
+    "bisectprobe-v0.6.0..v0.7.0-ed2824c18ebc.json",
+    "bisectprobe-v0.6.0..v0.7.0-f4b44d9df8f0cf5115636c89404147a3af7da3b2.json",
+    "revert-04180daaa285.json",
+    "revert-3ef577f949ad.json",
+    "revert-94e699d1f3c9.json",
+    "revert-a9aa849bbdb7.json",
+    "revert-ed2824c18ebc.json",
+    "revert-fbaea40fe9c6.json",
+    "traj-v0.1.0.json",
+    "traj-v0.2.0.json",
+    "traj-v0.3.0.json",
+    "traj-v0.4.0.json",
+    "traj-v0.5.0.json",
+    "traj-v0.6.0.json",
+    "traj-v0.7.0.json",
+    "traj-v0.8.0.json"
+  ]
+}
