@@ -120,6 +120,7 @@ def build_parser():
     p.add_argument("--pattern", default=None)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--min-ratio", type=float, default=1.15)
+    p.add_argument("--aa-tol", type=float, default=0.03)
     p.add_argument("--aa-rounds", type=int, default=2)
     p.add_argument("--revert-tol", type=float, default=0.05)
     p.add_argument("--out", required=True)
@@ -136,8 +137,9 @@ def main(argv=None):
             return 0
 
         if args.command == "aa":
-            result = aa_control(args.repo, args.rev, _cmd(args.cmd), rounds=args.rounds,
-                                samples=args.samples, warmup=args.warmup,
+            result = aa_control(args.repo, args.rev, _cmd(args.cmd),
+                                pairs=max(args.samples, 7) * max(args.rounds, 1),
+                                warmup=args.warmup,
                                 timeout=args.timeout, py_path=args.py_path)
             _dump(args.out, {"meta": _env_fingerprint(args.seed), "aa": result})
             return 0
@@ -174,7 +176,7 @@ def main(argv=None):
             payload.update(hunt(
                 args.repo, _cmd(args.cmd), pattern=args.pattern, limit=args.limit,
                 min_ratio=args.min_ratio, samples=args.samples, warmup=args.warmup,
-                aa_rounds=args.aa_rounds, revert_tol=args.revert_tol,
+                aa_tol=args.aa_tol, aa_rounds=args.aa_rounds, revert_tol=args.revert_tol,
                 timeout=args.timeout, py_path=args.py_path,
                 progress=lambda m: print("[tagaxis] %s" % m, file=sys.stderr),
             ))

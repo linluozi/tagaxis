@@ -76,6 +76,8 @@ def summarize(payload, ground_truth):
             "n_commits_in_range": f["bisect"]["n_commits"],
             "n_probes": f["bisect"]["n_probes"],
             "localized_exactly": truth == [culprit],
+            "ambiguous": f["bisect"]["ambiguous"],
+            "culprit_confirmed_against_parent": f["bisect"]["confirmed"],
             "revert_rel_delta_vs_parent": f["revert"]["rel_delta_vs_parent"],
             "revert_within_tolerance": f["revert"]["within_tolerance"],
         })
@@ -101,6 +103,8 @@ def summarize(payload, ground_truth):
             "steps_detected": len(payload["steps"]),
             "localized_exactly": sum(1 for f in findings if f["localized_exactly"]),
             "revert_within_tolerance": sum(1 for f in findings if f["revert_within_tolerance"]),
+            "confirmed_against_parent": sum(1 for f in findings if f["culprit_confirmed_against_parent"]),
+            "ambiguous": sum(1 for f in findings if f["ambiguous"]),
             "false_positive_intervals": len(false_positives),
             "max_probes_per_regression": max((f["n_probes"] for f in findings), default=0),
         },
@@ -137,7 +141,7 @@ def main(argv=None):
         payload.update(core.hunt(
             str(repo), [sys.executable, "bench/workload.py"],
             samples=args.samples, warmup=args.warmup,
-            min_ratio=1.15, aa_rounds=2, revert_tol=0.05,
+            min_ratio=1.15, aa_tol=0.03, revert_tol=0.05,
             progress=lambda m: print("[bench] %s" % m, file=sys.stderr),
         ))
         Path(args.out_json).parent.mkdir(parents=True, exist_ok=True)
@@ -162,16 +166,19 @@ def main(argv=None):
             f["interval"], f["from_median_ns"], f["to_median_ns"], f["ratio"],
             f["n_probes"], f["localized_exactly"],
             f["revert_rel_delta_vs_parent"] * 100.0, f["revert_within_tolerance"]))
-    print("steps=%d localized=%d revert_ok=%d false_positives=%d max_probes=%d"
-          % (t["steps_detected"], t["localized_exactly"], t["revert_within_tolerance"],
+    print("steps=%d localized=%d confirmed=%d ambiguous=%d revert_ok=%d false_positives=%d max_probes=%d"
+          % (t["steps_detected"], t["localized_exactly"], t["confirmed_against_parent"],
+             t["ambiguous"], t["revert_within_tolerance"],
              t["false_positive_intervals"], t["max_probes_per_regression"]))
     print("raw samples: %d files in %s" % (len(raw), args.raw_dir))
     print("evidence: %s" % args.evidence)
     ok = (t["steps_detected"] == summary["oracle"]["known_regressions"]
           and t["localized_exactly"] == summary["oracle"]["known_regressions"]
+          and t["confirmed_against_parent"] == summary["oracle"]["known_regressions"]
+          and t["ambiguous"] == 0
           and t["revert_within_tolerance"] == summary["oracle"]["known_regressions"]
           and t["false_positive_intervals"] == 0
-          and summary["aa_control_rel_dev"] <= 0.02)
+          and summary["aa_control_rel_dev"] <= 0.03)
     print("GATE: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 

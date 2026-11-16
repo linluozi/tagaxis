@@ -254,25 +254,64 @@ def detect_steps(traj, min_ratio=1.15, noise_frac=0.03):
     return steps
 
 
-def aa_control(repo, rev, cmd, rounds=2, samples=7, warmup=3, **kw):
-    """A/A null test: measure the same revision twice, same conditions."""
-    runs = [measure(repo, rev, cmd, samples=samples, warmup=warmup, label=rev, **kw)
-            for _ in range(rounds)]
-    medians = [r["median_ns"] for r in runs]
-    dev = (max(medians) - min(medians)) / min(medians)
-    return {"rev": rev, "medians_ns": medians, "rel_dev": dev, "runs": runs}
+def aa_control(repo, rev, cmd, pairs=7, warmup=3, env=None, timeout=300,
+               py_path=False, **_ignored):
+    """Interleaved A/A null test: alternate two measurements of one revision.
+
+    The two samples of each pair are taken back to back inside a single
+    worktree, so slow machine drift (thermal, page cache, co-tenants) hits
+    both sequences and cancels out instead of being reported as noise.
+    """
+    sha = rev_parse(repo, rev)
+    full_env = dict(env or {})
+    if py_path:
+        inherited = os.environ.get("PYTHONPATH")
+        full_env["PYTHONPATH"] = os.path.abspath(repo) + (
+            (os.pathsep + inherited) if inherited else "")
+    source = "wall"
+    with Worktree(repo, sha) as wt:
+        if py_path:
+            inherited = os.environ.get("PYTHONPATH")
+            full_env["PYTHONPATH"] = wt + ((os.pathsep + inherited) if inherited else "")
+        for _ in range(warmup):
+            _, source, _ = run_once(wt, cmd, env=full_env, timeout=timeout)
+        left, right = [], []
+        for _ in range(pairs):
+            ns, source, _ = run_once(wt, cmd, env=full_env, timeout=timeout)
+            left.append(ns)
+            ns, source, _ = run_once(wt, cmd, env=full_env, timeout=timeout)
+            right.append(ns)
+    a = summarize(sha, rev + "#a", left, source)
+    b = summarize(sha, rev + "#b", right, source)
+    medians = [a["median_ns"], b["median_ns"]]
+    return {
+        "rev": rev,
+        "interleaved": True,
+        "pairs": pairs,
+        "medians_ns": medians,
+        "rel_dev": (max(medians) - min(medians)) / min(medians),
+        "run_a": a,
+        "run_b": b,
+        "runs": [a, b],
+    }
 
 
 # --------------------------------------------------------------------------
 # bisection
 # --------------------------------------------------------------------------
 
-def bisect(repo, good, bad, cmd, samples=7, warmup=3, **kw):
+def bisect(repo, good, bad, cmd, samples=7, warmup=3, confirm_margin=0.05, **kw):
     """Localize the first commit in ``good..bad`` that is measurably slower.
 
     Assumes a single monotone step inside the range (callers bisect one
     adjacent tag pair at a time).  Classification threshold is the geometric
     mean of the two endpoint medians, so a partial step is still resolvable.
+
+    A single misclassified probe would silently return the wrong commit, so
+    probes are taken with at least ``max(samples, 11)`` runs and the result is
+    re-checked: the culprit's own parent must be measurably *faster* than the
+    culprit.  If it is not, the verdict is reported as ``ambiguous`` instead
+    of guessed.
     """
     good_sha = rev_parse(repo, good)
     bad_sha = rev_parse(repo, bad)
@@ -288,13 +327,15 @@ def bisect(repo, good, bad, cmd, samples=7, warmup=3, **kw):
         raise TagaxisError("bad revision is not slower than good revision")
     threshold = math.sqrt(gm["median_ns"] * bm["median_ns"])
 
+    probe_samples = max(samples, 11)
     cache = {gm["rev"]: gm, bm["rev"]: bm}
     probes = []
     lo, hi = -1, len(commits) - 1
     while hi - lo > 1:
         mid = (lo + hi) // 2
         sha = commits[mid]
-        m = measure(repo, sha, cmd, samples=samples, warmup=warmup, label=sha[:12], **kw)
+        m = measure(repo, sha, cmd, samples=probe_samples, warmup=warmup,
+                    label=sha[:12], **kw)
         cache[sha] = m
         probes.append({"sha": sha, "median_ns": m["median_ns"],
                        "slower_than_threshold": m["median_ns"] > threshold})
@@ -304,6 +345,14 @@ def bisect(repo, good, bad, cmd, samples=7, warmup=3, **kw):
             lo = mid
 
     culprit = commits[hi]
+    parent = _git(repo, "rev-parse", "%s^" % culprit, check=False).stdout.strip() or None
+    parent_measurement = None
+    confirmed = None
+    if parent:
+        parent_measurement = measure(repo, parent, cmd, samples=probe_samples,
+                                     warmup=warmup, label=parent[:12], **kw)
+        cache.setdefault(parent, parent_measurement)
+        confirmed = cache[culprit]["median_ns"] > parent_measurement["median_ns"] * (1.0 + confirm_margin)
     measured = [cache[c] for c in commits if c in cache]
     return {
         "good": good,
@@ -312,10 +361,17 @@ def bisect(repo, good, bad, cmd, samples=7, warmup=3, **kw):
         "bad_sha": bad_sha,
         "n_commits": len(commits),
         "n_probes": len(probes),
+        "probe_samples": probe_samples,
         "log2_commits": math.log2(len(commits)) if len(commits) > 1 else 0.0,
         "threshold_ns": threshold,
+        "confirm_margin": confirm_margin,
         "culprit": culprit,
         "culprit_subject": commit_subject(repo, culprit),
+        "culprit_median_ns": cache[culprit]["median_ns"],
+        "parent": parent,
+        "parent_median_ns": parent_measurement["median_ns"] if parent_measurement else None,
+        "confirmed": confirmed,
+        "ambiguous": (confirmed is False),
         "probes": probes,
         "measured": measured,
     }
@@ -344,7 +400,8 @@ def revert_and_measure(repo, sha, cmd, samples=7, warmup=3, **kw):
 # --------------------------------------------------------------------------
 
 def hunt(repo, cmd, tags=None, pattern=None, limit=None, min_ratio=1.15,
-         samples=7, warmup=3, aa_rounds=2, revert_tol=0.05, progress=None, **kw):
+         samples=7, warmup=3, aa_tol=0.03, aa_rounds=2, revert_tol=0.05,
+         progress=None, **kw):
     """Trace tags, detect steps, bisect each step, prove causality by revert."""
     revs = tags if tags is not None else list_tags(repo, pattern=pattern, limit=limit)
     if len(revs) < 2:
@@ -355,11 +412,11 @@ def hunt(repo, cmd, tags=None, pattern=None, limit=None, min_ratio=1.15,
             progress(msg)
 
     say("A/A control on %s" % revs[0])
-    aa = aa_control(repo, revs[0], cmd, rounds=aa_rounds, samples=samples, warmup=warmup, **kw)
-    if aa["rel_dev"] > 0.02:
+    aa = aa_control(repo, revs[0], cmd, pairs=max(samples, 7), warmup=warmup, **kw)
+    if aa["rel_dev"] > aa_tol:
         raise TagaxisError(
-            "A/A control failed: same revision differs by %.2f%% (>2%%)"
-            % (aa["rel_dev"] * 100.0)
+            "A/A control failed: interleaved same-revision medians differ by %.2f%% (>%.2f%%); "
+            "no verdict issued" % (aa["rel_dev"] * 100.0, aa_tol * 100.0)
         )
 
     say("trajectory over %d revisions" % len(revs))
@@ -375,24 +432,24 @@ def hunt(repo, cmd, tags=None, pattern=None, limit=None, min_ratio=1.15,
         say("bisect %s..%s (ratio %.3fx)" % (step["from_label"], step["to_label"], step["ratio"]))
         b = bisect(repo, step["from_rev"], step["to_rev"], cmd,
                    samples=samples, warmup=warmup, **kw)
-        parent = _git(repo, "rev-parse", "%s^" % b["culprit"], check=False).stdout.strip()
         revert = None
-        if parent:
-            base = measure(repo, parent, cmd, samples=samples, warmup=warmup,
-                           label=parent[:12], **kw)
+        if b["ambiguous"]:
+            say("  AMBIGUOUS: %s is not measurably slower than its parent %s"
+                % (b["culprit"][:12], (b["parent"] or "?")[:12]))
+        if b["parent"]:
             rev_m = revert_and_measure(repo, b["culprit"], cmd, samples=samples,
                                        warmup=warmup, **kw)
-            rel = (rev_m["median_ns"] - base["median_ns"]) / base["median_ns"]
+            rel = (rev_m["median_ns"] - b["parent_median_ns"]) / b["parent_median_ns"]
             revert = {
-                "parent": parent,
-                "parent_median_ns": base["median_ns"],
+                "parent": b["parent"],
+                "parent_median_ns": b["parent_median_ns"],
                 "reverted_median_ns": rev_m["median_ns"],
                 "rel_delta_vs_parent": rel,
                 "within_tolerance": abs(rel) <= revert_tol,
                 "tolerance": revert_tol,
                 "reverted_measurement": rev_m,
             }
-        findings.append({**step, "bisect": b, "revert": revert})
+        findings.append({**step, "bisect": b, "ambiguous": b["ambiguous"], "revert": revert})
         say("  culprit %s  revert delta %s"
             % (b["culprit"][:12],
                ("%.3f%%" % (revert["rel_delta_vs_parent"] * 100.0)) if revert else "n/a"))

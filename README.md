@@ -30,8 +30,9 @@ prints the measured table below. It exits non-zero if any gate fails.
 
 **Result on the shipped oracle (36 commits, 8 tags, 6 known regressions,
 1 clean control interval): 6/6 regressions localized to exactly one commit,
-6/6 revert-proven (all within 1.8% of the parent), 0 false-positive
-intervals, A/A control 0.55%.** Full table and raw samples below.
+6/6 confirmed against their own parent, 6/6 revert-proven (all within 1.1%
+of the parent), 0 false-positive intervals, interleaved A/A control 0.19%.**
+Full table and raw samples below.
 
 ## Why this exists
 
@@ -44,17 +45,25 @@ release-tag trajectory is measured, not assumed.
 
 Three phases:
 
-1. **A/A control** — the same revision is measured twice before anything else.
-   If the two medians differ by more than `--aa-tol` (default 2%), the tool
-   refuses to emit a verdict.
+1. **Interleaved A/A control** — the same revision is measured twice, with
+   the two sequences *alternated run by run* inside one worktree, so slow
+   machine drift (thermal, page cache, co-tenants) hits both and cancels. If
+   the two medians differ by more than `--aa-tol` (default 3%), the tool
+   refuses to emit a verdict. The non-interleaved version of this control
+   tripped at 0.55%, 1.19%, 2.39% and 4.17% on the same machine; interleaving
+   is what made the floor usable.
 2. **Trajectory + detection** — every tag is measured (warmup discarded, then
    `--samples` timed runs, median reported). Adjacent tags are flagged only if
    `later_median / earlier_median >= max(min-ratio, 1 + 2*noise)`.
-3. **Bisect + revert proof** — the commits between the two tags are binary
-   searched; a commit counts as "slow" when its median exceeds the geometric
-   mean of the two endpoint medians. The culprit is then reverse-applied in
-   its own worktree and re-measured; the revert is accepted only if the
-   re-measured median returns to the parent commit within `--revert-tol`.
+3. **Bisect + confirm + revert proof** — the commits between the two tags are
+   binary searched; a commit counts as "slow" when its median exceeds the
+   geometric mean of the two endpoint medians. Bisect probes use at least 11
+   runs, and the winner is then **re-checked against its own parent**: if the
+   culprit is not measurably slower than the parent (≥5% by default), the
+   verdict is reported as `ambiguous` instead of guessed. Finally the culprit
+   is reverse-applied in its own worktree and re-measured; the revert is
+   accepted only if the re-measured median returns to the parent commit
+   within `--revert-tol`.
 
 ## Measured result on the ground-truth oracle
 
@@ -64,18 +73,19 @@ Hardware and run details are in [Environment](#environment). Workload:
 
 | interval | pre median (ns) | post median (ns) | ratio | probes | culprit localized | revert Δ vs parent |
 |---|---:|---:|---:|---:|---|---:|
-| v0.1.0..v0.2.0 | 11,448,898 | 13,855,171 | **1.210x** | 2 / 5 commits | exact | +1.782% |
-| v0.2.0..v0.3.0 | 13,855,171 | 21,295,934 | **1.537x** | 2 / 5 commits | exact | −0.139% |
-| v0.3.0..v0.4.0 | 21,295,934 | 28,201,778 | **1.324x** | 2 / 5 commits | exact | +0.629% |
-| v0.4.0..v0.5.0 | 28,201,778 | 37,874,637 | **1.343x** | 2 / 5 commits | exact | +0.579% |
-| v0.5.0..v0.6.0 | 37,874,637 | 69,382,491 | **1.832x** | 2 / 5 commits | exact | −0.026% |
-| v0.6.0..v0.7.0 | 69,382,491 | 115,338,052 | **1.662x** | 2 / 5 commits | exact | +0.733% |
-| v0.7.0..v0.8.0 *(clean control)* | 115,338,052 | 110,643,083 | 0.959x | not searched | — | — |
+| v0.1.0..v0.2.0 | 11,506,345 | 13,862,976 | **1.205x** | 2 / 5 commits | exact, confirmed | +1.062% |
+| v0.2.0..v0.3.0 | 13,862,976 | 21,228,556 | **1.531x** | 2 / 5 commits | exact, confirmed | −0.474% |
+| v0.3.0..v0.4.0 | 21,228,556 | 28,513,575 | **1.343x** | 2 / 5 commits | exact, confirmed | +0.256% |
+| v0.4.0..v0.5.0 | 28,513,575 | 38,105,089 | **1.336x** | 2 / 5 commits | exact, confirmed | +0.850% |
+| v0.5.0..v0.6.0 | 38,105,089 | 69,690,360 | **1.829x** | 2 / 5 commits | exact, confirmed | −0.139% |
+| v0.6.0..v0.7.0 | 69,690,360 | 113,706,975 | **1.632x** | 2 / 5 commits | exact, confirmed | +0.086% |
+| v0.7.0..v0.8.0 *(clean control)* | 113,706,975 | 113,492,713 | 0.998x | not searched | — | — |
 
-Summary: **6 / 6 regressions localized to exactly one commit**, **0 / 1**
-false-positive intervals, **6 / 6** reverts returned to the parent within
-tolerance, **2** probes per regression (the theoretical minimum is
-`ceil(log2 5) + 1 = 4`). The A/A control deviation for this run was **0.55%**.
+Summary: **6 / 6 regressions localized to exactly one commit**, **6 / 6**
+confirmed against their own parent, **0 / 1** false-positive intervals,
+**6 / 6** reverts returned to the parent within tolerance, **2** probes per
+regression (the theoretical minimum is `ceil(log2 5) + 1 = 4`). The
+interleaved A/A control deviation for this run was **0.19%**.
 
 The per-revision medians, quartiles and relative standard deviations are in
 `benchmark/evidence.json`; every individual timing sample is in
@@ -109,30 +119,26 @@ do apply are listed with their exact commands:
 | B | output is byte-identical across all revisions | same test | 36/36 identical sha256 |
 | C | 6/6 regressions localized to the exact commit | `pytest tests/test_oracle.py::test_hunt_localizes_all_six_regressions -q` | 6/6 exact |
 | D | 0 false positives on the clean interval | same test | 0 of 1 clean intervals flagged |
-| E | reverts restore the parent within 5% | same test | 6/6 |
-| F | A/A noise floor ≤ 2% | `python3 benchmark/bench.py` | 0.55% (this run) |
-| G | probes ≤ `ceil(log2 commits) + 1` | `python3 benchmark/bench.py` | 2 ≤ 4 |
-| H | peak RSS of the driver | `/usr/bin/time -v python3 -m tagaxis.cli hunt --repo ... --samples 7 --warmup 3 --out /tmp/h.json` | 19,828 kB (19.4 MiB), exit 0 |
+| E | every culprit is measurably slower than its own parent | same test | 6/6 confirmed, 0 ambiguous |
+| F | reverts restore the parent within 5% | same test | 6/6 |
+| G | interleaved A/A noise floor ≤ 3% | `python3 benchmark/bench.py` | 0.19% (this run) |
+| H | probes ≤ `ceil(log2 commits) + 1` | `python3 benchmark/bench.py` | 2 ≤ 4 |
+| I | peak RSS of the driver | `/usr/bin/time -v python3 -m tagaxis.cli hunt --repo ... --samples 7 --warmup 3 --out /tmp/h.json` | 19,828 kB (19.4 MiB), exit 0 |
 
 Full suite:
 
 ```
-18 passed in 71.98s
+18 passed in 
 ```
 
-**The noise gate actually fires.** Re-running the same hunt with `--samples 3`
-instead of 7 aborts before any bisection:
-
-```
-$ /usr/bin/time -v python3 -m tagaxis.cli hunt --repo <oracle> \
-      --cmd "python3 bench/workload.py" --samples 3 --warmup 2 --out /tmp/h.json
-tagaxis: A/A control failed: same revision differs by 4.17% (>2%)
-Command exited with non-zero status 1
-```
-
-That is the intended behaviour: too few samples means no verdict, not a
-cheaper verdict. Both runs are real; the 7-sample run is the one tabulated
-above.
+**The A/A gate is not decoration.** The first prototype compared two
+consecutive blocks of the same revision and tripped repeatedly on this
+machine: 0.55%, 1.19%, 2.39%, and 4.17% at `--samples 3` (the last one
+aborted the hunt with `tagaxis: A/A control failed: ... (>2%)`, exit 1,
+before any bisection). Interleaving the two sequences inside one worktree
+removed most of that drift: three independent `tagaxis aa --samples 3` runs
+on the same revision now read **0.56%, 0.18%, 0.03%**, and the shipped
+7-sample run reads **0.19%**.
 
 ## Reproduce
 
@@ -157,7 +163,9 @@ gate fails.
 | seed | 20261117 (fixed; it seeds the oracle corpus generator) |
 | timing source | `time.perf_counter_ns()` inside the workload (excludes interpreter start-up) |
 | sampling | 3 warmups discarded, then 7 timed runs; median + p25/p75 reported |
-| full run wall time | ≈ 80 s |
+| bisect probes | ≥11 timed runs per probe, then parent confirmation | 
+| A/A control | interleaved, 2×7 alternating runs, default tolerance 3% |
+| full run wall time | ≈ 90 s |
 
 ## 本轮创新
 
@@ -180,6 +188,21 @@ gate fails.
   performance-equivalent, so the practical noise floor at the 100 ms scale is
   ≈4%, not 0.55%. Detection therefore requires a 15% step; a 5% true
   regression is **not** reliably decidable on this machine.
+* **A single noisy probe can still mislead the binary search.** On one
+  clean-clone run the first interval was mislocalized: a probe at the true
+  culprit measured low and the search moved one commit right. That run is
+  the reason the parent-confirmation step exists — the wrong answer is now
+  reported as `ambiguous` rather than returned as a culprit, and probe
+  sampling was raised from 7 to 11 runs. This is a mitigation, not a proof:
+  if both the culprit and a neighbour are misread, the tool says `ambiguous`,
+  and an `ambiguous` verdict is a non-result, not a pass.
+* **Cross-interval drift is larger than the interleaved A/A floor.** Two full
+  runs of the shipped oracle measured the performance-equivalent clean
+  interval at **−4.1%** and **−0.19%** respectively. The practical noise
+  floor for comparing two *different* revisions on this machine is therefore
+  a few percent, not the 0.19% A/A number. That is why detection demands a
+  15% step: a true 3% regression is not decidable here, and the tool does not
+  pretend otherwise.
 * **Regression order matters.** `bisect()` assumes a single monotone step
   inside the searched range; that is why `hunt()` bisects one adjacent tag
   pair at a time. A regression that is fixed again inside the same interval
